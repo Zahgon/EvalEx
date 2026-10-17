@@ -1,0 +1,629 @@
+// Copyright 2012-2022 Udo Klimaschewski (EvalEx)
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! `java.lang.Character` for the UTF-16 code units the tokenizer looks at, and the case rules of `java.lang.String`.
+
+use super::JString;
+
+/// `Character.isLetter` for the code units of the Basic Multilingual Plane, as inclusive ranges in ascending order.
+const LETTERS: [(u16, u16); 380] = [
+    (0x0041, 0x005a),
+    (0x0061, 0x007a),
+    (0x00aa, 0x00aa),
+    (0x00b5, 0x00b5),
+    (0x00ba, 0x00ba),
+    (0x00c0, 0x00d6),
+    (0x00d8, 0x00f6),
+    (0x00f8, 0x02c1),
+    (0x02c6, 0x02d1),
+    (0x02e0, 0x02e4),
+    (0x02ec, 0x02ec),
+    (0x02ee, 0x02ee),
+    (0x0370, 0x0374),
+    (0x0376, 0x0377),
+    (0x037a, 0x037d),
+    (0x037f, 0x037f),
+    (0x0386, 0x0386),
+    (0x0388, 0x038a),
+    (0x038c, 0x038c),
+    (0x038e, 0x03a1),
+    (0x03a3, 0x03f5),
+    (0x03f7, 0x0481),
+    (0x048a, 0x052f),
+    (0x0531, 0x0556),
+    (0x0559, 0x0559),
+    (0x0560, 0x0588),
+    (0x05d0, 0x05ea),
+    (0x05ef, 0x05f2),
+    (0x0620, 0x064a),
+    (0x066e, 0x066f),
+    (0x0671, 0x06d3),
+    (0x06d5, 0x06d5),
+    (0x06e5, 0x06e6),
+    (0x06ee, 0x06ef),
+    (0x06fa, 0x06fc),
+    (0x06ff, 0x06ff),
+    (0x0710, 0x0710),
+    (0x0712, 0x072f),
+    (0x074d, 0x07a5),
+    (0x07b1, 0x07b1),
+    (0x07ca, 0x07ea),
+    (0x07f4, 0x07f5),
+    (0x07fa, 0x07fa),
+    (0x0800, 0x0815),
+    (0x081a, 0x081a),
+    (0x0824, 0x0824),
+    (0x0828, 0x0828),
+    (0x0840, 0x0858),
+    (0x0860, 0x086a),
+    (0x0870, 0x0887),
+    (0x0889, 0x088e),
+    (0x08a0, 0x08c9),
+    (0x0904, 0x0939),
+    (0x093d, 0x093d),
+    (0x0950, 0x0950),
+    (0x0958, 0x0961),
+    (0x0971, 0x0980),
+    (0x0985, 0x098c),
+    (0x098f, 0x0990),
+    (0x0993, 0x09a8),
+    (0x09aa, 0x09b0),
+    (0x09b2, 0x09b2),
+    (0x09b6, 0x09b9),
+    (0x09bd, 0x09bd),
+    (0x09ce, 0x09ce),
+    (0x09dc, 0x09dd),
+    (0x09df, 0x09e1),
+    (0x09f0, 0x09f1),
+    (0x09fc, 0x09fc),
+    (0x0a05, 0x0a0a),
+    (0x0a0f, 0x0a10),
+    (0x0a13, 0x0a28),
+    (0x0a2a, 0x0a30),
+    (0x0a32, 0x0a33),
+    (0x0a35, 0x0a36),
+    (0x0a38, 0x0a39),
+    (0x0a59, 0x0a5c),
+    (0x0a5e, 0x0a5e),
+    (0x0a72, 0x0a74),
+    (0x0a85, 0x0a8d),
+    (0x0a8f, 0x0a91),
+    (0x0a93, 0x0aa8),
+    (0x0aaa, 0x0ab0),
+    (0x0ab2, 0x0ab3),
+    (0x0ab5, 0x0ab9),
+    (0x0abd, 0x0abd),
+    (0x0ad0, 0x0ad0),
+    (0x0ae0, 0x0ae1),
+    (0x0af9, 0x0af9),
+    (0x0b05, 0x0b0c),
+    (0x0b0f, 0x0b10),
+    (0x0b13, 0x0b28),
+    (0x0b2a, 0x0b30),
+    (0x0b32, 0x0b33),
+    (0x0b35, 0x0b39),
+    (0x0b3d, 0x0b3d),
+    (0x0b5c, 0x0b5d),
+    (0x0b5f, 0x0b61),
+    (0x0b71, 0x0b71),
+    (0x0b83, 0x0b83),
+    (0x0b85, 0x0b8a),
+    (0x0b8e, 0x0b90),
+    (0x0b92, 0x0b95),
+    (0x0b99, 0x0b9a),
+    (0x0b9c, 0x0b9c),
+    (0x0b9e, 0x0b9f),
+    (0x0ba3, 0x0ba4),
+    (0x0ba8, 0x0baa),
+    (0x0bae, 0x0bb9),
+    (0x0bd0, 0x0bd0),
+    (0x0c05, 0x0c0c),
+    (0x0c0e, 0x0c10),
+    (0x0c12, 0x0c28),
+    (0x0c2a, 0x0c39),
+    (0x0c3d, 0x0c3d),
+    (0x0c58, 0x0c5a),
+    (0x0c5d, 0x0c5d),
+    (0x0c60, 0x0c61),
+    (0x0c80, 0x0c80),
+    (0x0c85, 0x0c8c),
+    (0x0c8e, 0x0c90),
+    (0x0c92, 0x0ca8),
+    (0x0caa, 0x0cb3),
+    (0x0cb5, 0x0cb9),
+    (0x0cbd, 0x0cbd),
+    (0x0cdd, 0x0cde),
+    (0x0ce0, 0x0ce1),
+    (0x0cf1, 0x0cf2),
+    (0x0d04, 0x0d0c),
+    (0x0d0e, 0x0d10),
+    (0x0d12, 0x0d3a),
+    (0x0d3d, 0x0d3d),
+    (0x0d4e, 0x0d4e),
+    (0x0d54, 0x0d56),
+    (0x0d5f, 0x0d61),
+    (0x0d7a, 0x0d7f),
+    (0x0d85, 0x0d96),
+    (0x0d9a, 0x0db1),
+    (0x0db3, 0x0dbb),
+    (0x0dbd, 0x0dbd),
+    (0x0dc0, 0x0dc6),
+    (0x0e01, 0x0e30),
+    (0x0e32, 0x0e33),
+    (0x0e40, 0x0e46),
+    (0x0e81, 0x0e82),
+    (0x0e84, 0x0e84),
+    (0x0e86, 0x0e8a),
+    (0x0e8c, 0x0ea3),
+    (0x0ea5, 0x0ea5),
+    (0x0ea7, 0x0eb0),
+    (0x0eb2, 0x0eb3),
+    (0x0ebd, 0x0ebd),
+    (0x0ec0, 0x0ec4),
+    (0x0ec6, 0x0ec6),
+    (0x0edc, 0x0edf),
+    (0x0f00, 0x0f00),
+    (0x0f40, 0x0f47),
+    (0x0f49, 0x0f6c),
+    (0x0f88, 0x0f8c),
+    (0x1000, 0x102a),
+    (0x103f, 0x103f),
+    (0x1050, 0x1055),
+    (0x105a, 0x105d),
+    (0x1061, 0x1061),
+    (0x1065, 0x1066),
+    (0x106e, 0x1070),
+    (0x1075, 0x1081),
+    (0x108e, 0x108e),
+    (0x10a0, 0x10c5),
+    (0x10c7, 0x10c7),
+    (0x10cd, 0x10cd),
+    (0x10d0, 0x10fa),
+    (0x10fc, 0x1248),
+    (0x124a, 0x124d),
+    (0x1250, 0x1256),
+    (0x1258, 0x1258),
+    (0x125a, 0x125d),
+    (0x1260, 0x1288),
+    (0x128a, 0x128d),
+    (0x1290, 0x12b0),
+    (0x12b2, 0x12b5),
+    (0x12b8, 0x12be),
+    (0x12c0, 0x12c0),
+    (0x12c2, 0x12c5),
+    (0x12c8, 0x12d6),
+    (0x12d8, 0x1310),
+    (0x1312, 0x1315),
+    (0x1318, 0x135a),
+    (0x1380, 0x138f),
+    (0x13a0, 0x13f5),
+    (0x13f8, 0x13fd),
+    (0x1401, 0x166c),
+    (0x166f, 0x167f),
+    (0x1681, 0x169a),
+    (0x16a0, 0x16ea),
+    (0x16f1, 0x16f8),
+    (0x1700, 0x1711),
+    (0x171f, 0x1731),
+    (0x1740, 0x1751),
+    (0x1760, 0x176c),
+    (0x176e, 0x1770),
+    (0x1780, 0x17b3),
+    (0x17d7, 0x17d7),
+    (0x17dc, 0x17dc),
+    (0x1820, 0x1878),
+    (0x1880, 0x1884),
+    (0x1887, 0x18a8),
+    (0x18aa, 0x18aa),
+    (0x18b0, 0x18f5),
+    (0x1900, 0x191e),
+    (0x1950, 0x196d),
+    (0x1970, 0x1974),
+    (0x1980, 0x19ab),
+    (0x19b0, 0x19c9),
+    (0x1a00, 0x1a16),
+    (0x1a20, 0x1a54),
+    (0x1aa7, 0x1aa7),
+    (0x1b05, 0x1b33),
+    (0x1b45, 0x1b4c),
+    (0x1b83, 0x1ba0),
+    (0x1bae, 0x1baf),
+    (0x1bba, 0x1be5),
+    (0x1c00, 0x1c23),
+    (0x1c4d, 0x1c4f),
+    (0x1c5a, 0x1c7d),
+    (0x1c80, 0x1c88),
+    (0x1c90, 0x1cba),
+    (0x1cbd, 0x1cbf),
+    (0x1ce9, 0x1cec),
+    (0x1cee, 0x1cf3),
+    (0x1cf5, 0x1cf6),
+    (0x1cfa, 0x1cfa),
+    (0x1d00, 0x1dbf),
+    (0x1e00, 0x1f15),
+    (0x1f18, 0x1f1d),
+    (0x1f20, 0x1f45),
+    (0x1f48, 0x1f4d),
+    (0x1f50, 0x1f57),
+    (0x1f59, 0x1f59),
+    (0x1f5b, 0x1f5b),
+    (0x1f5d, 0x1f5d),
+    (0x1f5f, 0x1f7d),
+    (0x1f80, 0x1fb4),
+    (0x1fb6, 0x1fbc),
+    (0x1fbe, 0x1fbe),
+    (0x1fc2, 0x1fc4),
+    (0x1fc6, 0x1fcc),
+    (0x1fd0, 0x1fd3),
+    (0x1fd6, 0x1fdb),
+    (0x1fe0, 0x1fec),
+    (0x1ff2, 0x1ff4),
+    (0x1ff6, 0x1ffc),
+    (0x2071, 0x2071),
+    (0x207f, 0x207f),
+    (0x2090, 0x209c),
+    (0x2102, 0x2102),
+    (0x2107, 0x2107),
+    (0x210a, 0x2113),
+    (0x2115, 0x2115),
+    (0x2119, 0x211d),
+    (0x2124, 0x2124),
+    (0x2126, 0x2126),
+    (0x2128, 0x2128),
+    (0x212a, 0x212d),
+    (0x212f, 0x2139),
+    (0x213c, 0x213f),
+    (0x2145, 0x2149),
+    (0x214e, 0x214e),
+    (0x2183, 0x2184),
+    (0x2c00, 0x2ce4),
+    (0x2ceb, 0x2cee),
+    (0x2cf2, 0x2cf3),
+    (0x2d00, 0x2d25),
+    (0x2d27, 0x2d27),
+    (0x2d2d, 0x2d2d),
+    (0x2d30, 0x2d67),
+    (0x2d6f, 0x2d6f),
+    (0x2d80, 0x2d96),
+    (0x2da0, 0x2da6),
+    (0x2da8, 0x2dae),
+    (0x2db0, 0x2db6),
+    (0x2db8, 0x2dbe),
+    (0x2dc0, 0x2dc6),
+    (0x2dc8, 0x2dce),
+    (0x2dd0, 0x2dd6),
+    (0x2dd8, 0x2dde),
+    (0x2e2f, 0x2e2f),
+    (0x3005, 0x3006),
+    (0x3031, 0x3035),
+    (0x303b, 0x303c),
+    (0x3041, 0x3096),
+    (0x309d, 0x309f),
+    (0x30a1, 0x30fa),
+    (0x30fc, 0x30ff),
+    (0x3105, 0x312f),
+    (0x3131, 0x318e),
+    (0x31a0, 0x31bf),
+    (0x31f0, 0x31ff),
+    (0x3400, 0x4dbf),
+    (0x4e00, 0xa48c),
+    (0xa4d0, 0xa4fd),
+    (0xa500, 0xa60c),
+    (0xa610, 0xa61f),
+    (0xa62a, 0xa62b),
+    (0xa640, 0xa66e),
+    (0xa67f, 0xa69d),
+    (0xa6a0, 0xa6e5),
+    (0xa717, 0xa71f),
+    (0xa722, 0xa788),
+    (0xa78b, 0xa7ca),
+    (0xa7d0, 0xa7d1),
+    (0xa7d3, 0xa7d3),
+    (0xa7d5, 0xa7d9),
+    (0xa7f2, 0xa801),
+    (0xa803, 0xa805),
+    (0xa807, 0xa80a),
+    (0xa80c, 0xa822),
+    (0xa840, 0xa873),
+    (0xa882, 0xa8b3),
+    (0xa8f2, 0xa8f7),
+    (0xa8fb, 0xa8fb),
+    (0xa8fd, 0xa8fe),
+    (0xa90a, 0xa925),
+    (0xa930, 0xa946),
+    (0xa960, 0xa97c),
+    (0xa984, 0xa9b2),
+    (0xa9cf, 0xa9cf),
+    (0xa9e0, 0xa9e4),
+    (0xa9e6, 0xa9ef),
+    (0xa9fa, 0xa9fe),
+    (0xaa00, 0xaa28),
+    (0xaa40, 0xaa42),
+    (0xaa44, 0xaa4b),
+    (0xaa60, 0xaa76),
+    (0xaa7a, 0xaa7a),
+    (0xaa7e, 0xaaaf),
+    (0xaab1, 0xaab1),
+    (0xaab5, 0xaab6),
+    (0xaab9, 0xaabd),
+    (0xaac0, 0xaac0),
+    (0xaac2, 0xaac2),
+    (0xaadb, 0xaadd),
+    (0xaae0, 0xaaea),
+    (0xaaf2, 0xaaf4),
+    (0xab01, 0xab06),
+    (0xab09, 0xab0e),
+    (0xab11, 0xab16),
+    (0xab20, 0xab26),
+    (0xab28, 0xab2e),
+    (0xab30, 0xab5a),
+    (0xab5c, 0xab69),
+    (0xab70, 0xabe2),
+    (0xac00, 0xd7a3),
+    (0xd7b0, 0xd7c6),
+    (0xd7cb, 0xd7fb),
+    (0xf900, 0xfa6d),
+    (0xfa70, 0xfad9),
+    (0xfb00, 0xfb06),
+    (0xfb13, 0xfb17),
+    (0xfb1d, 0xfb1d),
+    (0xfb1f, 0xfb28),
+    (0xfb2a, 0xfb36),
+    (0xfb38, 0xfb3c),
+    (0xfb3e, 0xfb3e),
+    (0xfb40, 0xfb41),
+    (0xfb43, 0xfb44),
+    (0xfb46, 0xfbb1),
+    (0xfbd3, 0xfd3d),
+    (0xfd50, 0xfd8f),
+    (0xfd92, 0xfdc7),
+    (0xfdf0, 0xfdfb),
+    (0xfe70, 0xfe74),
+    (0xfe76, 0xfefc),
+    (0xff21, 0xff3a),
+    (0xff41, 0xff5a),
+    (0xff66, 0xffbe),
+    (0xffc2, 0xffc7),
+    (0xffca, 0xffcf),
+    (0xffd2, 0xffd7),
+    (0xffda, 0xffdc),
+];
+
+/// The zero of every run of ten decimal digits (`Character.isDigit`), in ascending order.
+const DIGIT_ZEROS: [u16; 37] = [
+    0x0030, 0x0660, 0x06f0, 0x07c0, 0x0966, 0x09e6, 0x0a66, 0x0ae6, 0x0b66, 0x0be6, 0x0c66, 0x0ce6, 0x0d66, 0x0de6,
+    0x0e50, 0x0ed0, 0x0f20, 0x1040, 0x1090, 0x17e0, 0x1810, 0x1946, 0x19d0, 0x1a80, 0x1a90, 0x1b50, 0x1bb0, 0x1c40,
+    0x1c50, 0xa620, 0xa8d0, 0xa900, 0xa9d0, 0xa9f0, 0xaa50, 0xabf0, 0xff10,
+];
+
+/// `Character.isLetter` of a code unit.
+pub fn is_letter(unit: u16) -> bool {
+    LETTERS
+        .binary_search_by(|&(low, high)| {
+            if unit < low {
+                std::cmp::Ordering::Greater
+            } else if unit > high {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        })
+        .is_ok()
+}
+
+/// `Character.digit(unit, 10)`, or `None` for a code unit that is not a decimal digit.
+pub fn decimal_digit(unit: u16) -> Option<u32> {
+    let index = DIGIT_ZEROS.partition_point(|&zero| zero <= unit);
+    let zero = *DIGIT_ZEROS.get(index.checked_sub(1)?)?;
+    let digit = unit - zero;
+    (digit < 10).then_some(u32::from(digit))
+}
+
+/// `Character.digit(unit, radix)` for a radix in 2..=36.
+pub fn digit(unit: u16, radix: u32) -> Option<u32> {
+    let value = match unit {
+        0x41..=0x5A | 0xFF21..=0xFF3A | 0x61..=0x7A | 0xFF41..=0xFF5A => u32::from(unit & 0x1F) + 9,
+        _ => decimal_digit(unit)?,
+    };
+    (value < radix).then_some(value)
+}
+
+/// `Character.isDigit` of a code unit.
+pub fn is_digit(unit: u16) -> bool {
+    decimal_digit(unit).is_some()
+}
+
+/// `Character.isWhitespace` of a code unit.
+pub fn is_whitespace(unit: u16) -> bool {
+    matches!(
+        unit,
+        0x09..=0x0d
+            | 0x1c..=0x20
+            | 0x1680
+            | 0x2000..=0x2006
+            | 0x2008..=0x200a
+            | 0x2028
+            | 0x2029
+            | 0x205f
+            | 0x3000
+    )
+}
+
+/// Whether a character only gained an uppercase mapping after Unicode 15, the version of JDK 21.
+fn has_newer_mapping(symbol: char) -> bool {
+    matches!(
+        symbol,
+        '\u{19B}'
+            | '\u{264}'
+            | '\u{1C8A}'
+            | '\u{A7CD}'
+            | '\u{A7CF}'
+            | '\u{A7D3}'
+            | '\u{A7D5}'
+            | '\u{A7DB}'
+            | '\u{10D70}'..='\u{10D85}'
+            | '\u{16EBB}'..='\u{16ED3}'
+    )
+}
+
+/// Applies `map` to every run of well-formed UTF-16; lone surrogates stay as they are.
+fn map_text(text: &[u16], map: impl Fn(&str) -> String) -> JString {
+    let mut out = JString::with_capacity(text.len());
+    let mut run = String::new();
+    for decoded in char::decode_utf16(text.iter().copied()) {
+        match decoded {
+            Ok(c) => run.push(c),
+            Err(error) => {
+                out.extend(map(&run).encode_utf16());
+                run.clear();
+                out.push(error.unpaired_surrogate());
+            }
+        }
+    }
+    out.extend(map(&run).encode_utf16());
+    out
+}
+
+/// `String.toUpperCase()` in a locale without language-specific rules.
+pub fn to_upper_case(text: &[u16]) -> JString {
+    map_text(text, |run| {
+        let mut upper = String::with_capacity(run.len());
+        for c in run.chars() {
+            if has_newer_mapping(c) {
+                upper.push(c);
+            } else {
+                upper.extend(c.to_uppercase());
+            }
+        }
+        upper
+    })
+}
+
+/// `String.toLowerCase()` in a locale without language-specific rules.
+pub fn to_lower_case(text: &[u16]) -> JString {
+    map_text(text, str::to_lowercase)
+}
+
+/// `String.trim()`: removes the code units up to U+0020 at both ends.
+pub fn trim(text: &[u16]) -> &[u16] {
+    let start = text.iter().position(|&unit| unit > 0x20);
+    let end = text.iter().rposition(|&unit| unit > 0x20);
+    match (start, end) {
+        (Some(start), Some(end)) => &text[start..=end],
+        _ => &[],
+    }
+}
+
+/// `Boolean.parseBoolean`.
+pub fn parse_boolean(text: &[u16]) -> bool {
+    text.len() == 4
+        && text
+            .iter()
+            .zip("true".bytes())
+            .all(|(&unit, byte)| unit == u16::from(byte) || unit == u16::from(byte.to_ascii_uppercase()))
+}
+
+/// `String.hashCode`.
+pub fn hash_code(text: &[u16]) -> i32 {
+    text.iter().fold(0i32, |hash, &unit| hash.wrapping_mul(31).wrapping_add(i32::from(unit)))
+}
+
+/// The sort key of `String.CASE_INSENSITIVE_ORDER`: every code point folded with `Character.toUpperCase`, then
+/// `Character.toLowerCase`.
+pub fn case_insensitive_key(text: &[u16]) -> Vec<u32> {
+    char::decode_utf16(text.iter().copied())
+        .map(|decoded| match decoded {
+            Ok(c) => u32::from(simple_lower(simple_upper(c))),
+            Err(error) => u32::from(error.unpaired_surrogate()),
+        })
+        .collect()
+}
+
+/// `Character.toUpperCase(char)`.
+pub fn upper_unit(unit: u16) -> u16 {
+    map_unit(unit, simple_upper)
+}
+
+/// `Character.toLowerCase(char)`.
+pub fn lower_unit(unit: u16) -> u16 {
+    map_unit(unit, simple_lower)
+}
+
+/// Maps a code unit through a one-to-one case mapping that stays in the Basic Multilingual Plane.
+fn map_unit(unit: u16, map: fn(char) -> char) -> u16 {
+    char::from_u32(u32::from(unit)).and_then(|c| u16::try_from(u32::from(map(c))).ok()).unwrap_or(unit)
+}
+
+/// `Character.toUpperCase`: the mapping of one character to one character.
+fn simple_upper(c: char) -> char {
+    let mut mapped = c.to_uppercase();
+    match (mapped.next(), mapped.next()) {
+        (Some(upper), None) => upper,
+        _ => c,
+    }
+}
+
+/// `Character.toLowerCase`: the mapping of one character to one character.
+fn simple_lower(c: char) -> char {
+    let mut mapped = c.to_lowercase();
+    match (mapped.next(), mapped.next()) {
+        (Some(lower), None) => lower,
+        _ => c,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::java::js;
+
+    #[test]
+    fn classifies_code_units() {
+        assert!(is_letter(0x41));
+        assert!(!is_letter(0x30));
+        assert!(!is_letter(0xd83d));
+        assert_eq!(decimal_digit(0x37), Some(7));
+        assert_eq!(decimal_digit(0x0663), Some(3));
+        assert_eq!(decimal_digit(0x41), None);
+        assert_eq!(digit(0x7A, 36), Some(35));
+        assert_eq!(digit(0xFF3A, 36), Some(35));
+        assert_eq!(digit(0x7A, 35), None);
+        assert!(is_whitespace(0x2028));
+        assert!(!is_whitespace(0xa0));
+    }
+
+    #[test]
+    fn maps_case_with_full_mappings() {
+        assert_eq!(to_upper_case(&js("straße")), js("STRASSE"));
+        assert_eq!(to_lower_case(&js("ΑΣ")), js("ας"));
+        assert_eq!(to_upper_case(&[0xd83d, 0x61]), vec![0xd83d, 0x41]);
+        assert_eq!(to_upper_case(&js("\u{19B}\u{10D70}")), js("\u{19B}\u{10D70}"));
+    }
+
+    #[test]
+    fn trims_and_hashes_like_java() {
+        assert_eq!(trim(&js("\u{1} a b\t")), js("a b"));
+        assert_eq!(trim(&js("  ")), js(""));
+        assert_eq!(hash_code(&js("x")), 120);
+        assert_eq!(hash_code(&js("zz")), 3904);
+        assert!(parse_boolean(&js("tRuE")));
+        assert!(!parse_boolean(&js("yes")));
+    }
+
+    #[test]
+    fn folds_case_for_the_ordering() {
+        assert_eq!(case_insensitive_key(&js("Pi")), case_insensitive_key(&js("pI")));
+        assert_ne!(case_insensitive_key(&js("a")), case_insensitive_key(&js("b")));
+    }
+}

@@ -1,37 +1,21 @@
-# This workflow will build a Java project with Maven, and cache/restore any dependencies to improve the workflow execution time
-# For more information see: https://help.github.com/actions/language-and-framework-guides/building-and-testing-java-with-maven
-
 name: Build
 
 on:
   push:
-    branches: [ "main", "3.x.x"]
+    branches: [ "main", "3.x.x" ]
   pull_request:
-    branches: [ "main", "3.x.x"]
+    branches: [ "main", "3.x.x" ]
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Set up JDK 11
-        uses: actions/setup-java@v4
-        with:
-          java-version: '11'
-          distribution: 'corretto'
-          cache: maven
-      - name: Verify build and consumer POM
-        ## automatic analysis is enabled in SonarCloud, so it is disabled here
-        ## run: mvn --batch-mode verify sonar:sonar -Dsonar.projectKey=ezylang_EvalEx -Dsonar.organization=ezylang -Dsonar.host.url=https://sonarcloud.io -Dsonar.coverage.jacoco.xmlReportPaths=/home/runner/work/EvalEx/EvalEx/target/site/jacoco/jacoco.xml
-        run: |
-          mvn --batch-mode clean verify
-          test -f .flattened-pom.xml
-          ! grep -Eq '<(build|profiles|properties)>' .flattened-pom.xml
-          ! grep -q '<scope>test</scope>' .flattened-pom.xml
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      - name: Build
+        run: cargo build --release --locked
+      - name: Test
+        run: cargo test --locked
+      - name: Format
+        run: cargo fmt --check
+      - name: Lint
+        run: cargo clippy --all-targets -- -D warnings

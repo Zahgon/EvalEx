@@ -1,0 +1,18 @@
+[package]
+name = "evalex"
+version = "3.8.0"
+edition = "2021"
+description = "Mathematical and boolean expression evaluator, a Rust port of EvalEx"
+license = "Apache-2.0"
+repository = "https://github.com/ezylang/EvalEx"
+
+[lib]
+name = "evalex"
+path = "src/lib.rs"
+
+[[bin]]
+name = "evalex"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
